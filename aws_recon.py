@@ -7,7 +7,7 @@ class AwsSession:
 		self.session = self._setup_session()
 		self.client = self._setup_client()
 		self.resource = self._setup_resource()
-		self.instances = {}
+		self.servers = {}
 
 
 	def _setup_session(self):
@@ -36,7 +36,7 @@ class AwsSession:
 			except TypeError:
 				pass
 
-			self.instances[_server.instance_id] = (
+			self.servers[_server.instance_id] = (
 				{"Private IP": _server.private_ip_address}, 
 				{"Public IP": _server.public_ip_address}, 
 				{"State": _server.state["Name"]}, _tags
