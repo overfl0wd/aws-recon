@@ -29,15 +29,28 @@ class AwsSession:
 		"""
 		for _server in self.resource.instances.all():
 			_tags = { "Tags": {}}
+			_secondaries = []
 
-			try:
+			try:  # Grab all tags, add them to the dictionary. Passes if there are none.
 				for tags in _server.tags:
 					_tags["Tags"][tags["Key"]] = tags["Value"]
 			except TypeError:
 				pass
 
+			try:  # Grab all secondary IP addresses, and pass if there are none.
+				for item in _server.network_interfaces_attribute[0]["PrivateIpAddresses"]:
+					_secondaries.append(item["PrivateIpAddress"])
+			except IndexError:
+				pass
+
 			self.servers[_server.instance_id] = (
-				{"Private IP": _server.private_ip_address}, 
+				{"Current Private IP": _server.private_ip_address},
 				{"Public IP": _server.public_ip_address}, 
-				{"State": _server.state["Name"]}, _tags
+				{"State": _server.state["Name"]},
+				{"AMI": _server.image_id},
+				{"Instance Type": _server.instance_type},
+				{"Key Name": _server.key_name},
+				{"Role Profile": _server.iam_instance_profile},
+				{"Available Private IPs": _secondaries},
+				_tags
 			)
