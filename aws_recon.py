@@ -10,6 +10,7 @@ class AwsSession:
 		self.servers = {}
 		self.securitygroups = {}
 
+
 	def _setup_session(self):
 		_session = boto3.session.Session(region_name=self.region, profile_name=self.profile)
 		return _session
@@ -23,10 +24,11 @@ class AwsSession:
 		return _resource
 
 	def enumerate_servers(self):
-		""" Queries all EC2 instances in the account.
+		""" Queries all EC2 instances in the session.
 		Returns all associated tags, private + public IPs, and current state:
 		(running / stopped / terminated / etc).
 		"""
+
 		for _server in self.resource.instances.all():
 			_tags = { "Tags": {}}
 			_secondaries = []
@@ -59,11 +61,10 @@ class AwsSession:
 		""" Queries all security groups in the session.
 		Returns group name, description, VPC, and ID.
 		"""
-		_response = self.client.describe_security_groups()
 
-		for _group in _response["SecurityGroups"]:
-			self.securitygroups[_group["GroupId"]] = (
-				{"Name": _group["GroupName"]},
-				{"Description": _group["Description"]},
-				{"VPC": _group["VpcId"]}
+		for _group in self.resource.security_groups.all():
+			self.securitygroups[_group.group_id] = (
+				{"Name": _group.group_name},
+				{"Description": _group.description},
+				{"VPC": _group.vpc_id}
 			)
