@@ -8,7 +8,7 @@ class AwsSession:
 		self.client = self._setup_client()
 		self.resource = self._setup_resource()
 		self.servers = {}
-
+		self.securitygroups = {}
 
 	def _setup_session(self):
 		_session = boto3.session.Session(region_name=self.region, profile_name=self.profile)
@@ -53,4 +53,17 @@ class AwsSession:
 				{"Role Profile": _server.iam_instance_profile},
 				{"Available Private IPs": _secondaries},
 				_tags
+			)
+
+	def enumerate_securitygroups(self):
+		""" Queries all security groups in the session.
+		Returns group name, description, VPC, and ID.
+		"""
+		_response = self.client.describe_security_groups()
+
+		for _group in _response["SecurityGroups"]:
+			self.securitygroups[_group["GroupId"]] = (
+				{"Name": _group["GroupName"]},
+				{"Description": _group["Description"]},
+				{"VPC": _group["VpcId"]}
 			)
