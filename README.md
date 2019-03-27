@@ -18,7 +18,12 @@ pip install boto3
 ```
 
 ## usage (example_main.py)
-
+#### available methods:
+- enumerate_servers()
+- enumerate_securitygroups()
+- enumerate_networkinterfaces()
+- enumerate_classiclbs()
+- enumerate_applicationlbs()
 ```python
 from aws_recon import AwsSession
 
