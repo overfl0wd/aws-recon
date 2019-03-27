@@ -6,10 +6,14 @@ class AwsSession:
 		self.region = region
 		self.session = self._setup_session()
 		self.client = self._setup_client()
+		self.elbclient = self._setup_elb_client()
+		self.albclient = self._setup_alb_client()
 		self.resource = self._setup_resource()
 		self.servers = {}
 		self.securitygroups = {}
 		self.networkinterfaces = {}
+		self.classiclbs = {}
+		self.applicationlbs = {}
 
 
 	def _setup_session(self):
@@ -19,6 +23,14 @@ class AwsSession:
 	def _setup_client(self):
 		_client = self.session.client("ec2")
 		return _client
+
+	def _setup_elb_client(self):  # "Elastic" load balancers have been renamed to "Classic",
+		_elbclient = self.session.client("elb")  # but the SDK reflects the old name.
+		return _elbclient
+
+	def _setup_alb_client(self):  # Application load balancers have a different client than ELBs
+		_albclient = self.session.client("elbv2")
+		return _albclient
 
 	def _setup_resource(self):
 		_resource = self.session.resource("ec2")
@@ -113,4 +125,29 @@ class AwsSession:
 				{"Current Private IP": _interface.private_ip_address},
 				{"Available Private IPs": _secondaries},
 				_tags
+			)
+
+	def enumerate_classiclbs(self):
+
+		""" Queries all Classic load balancers.
+		Returns DNS name, scheme, attached servers, and listening ports.
+		"""
+
+		_response = self.elbclient.describe_load_balancers()
+
+		for _lb in _response["LoadBalancerDescriptions"]:
+			_listeners = {"Listeners": {}}
+			_attachments = []
+
+			for _listener in _lb["ListenerDescriptions"]:  # Grab the listening ports and protocols, add to dict.
+				_listeners["Listeners"][_listener["Listener"]["LoadBalancerPort"]] = _listener["Listener"]["Protocol"]
+
+			for _instance in _lb["Instances"]:
+				_attachments.append(_instance["InstanceId"])
+
+			self.classiclbs[_lb["LoadBalancerName"]] = (
+				{"DNS Name": _lb["DNSName"]},
+				{"Scheme": _lb["Scheme"]},
+				{"Attached Servers": _attachments},
+				_listeners
 			)
