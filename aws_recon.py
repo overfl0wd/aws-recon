@@ -151,3 +151,27 @@ class AwsSession:
 				{"Attached Servers": _attachments},
 				_listeners
 			)
+
+	def enumerate_applicationlbs(self):
+
+		""" Queries all Application & Network load balancers.
+		Returns DNS name, scheme, security groups, and listening ports.
+		"""
+
+		_response = self.albclient.describe_load_balancers()
+
+		for _lb in _response["LoadBalancers"]:
+			_securitygroups = []
+
+			try:  # Get attached security groups, and pass if there aren't any.
+				for _group in _lb["SecurityGroups"]:
+					_securitygroups.append(_group)
+			except KeyError:
+				pass
+
+			self.applicationlbs[_lb["LoadBalancerName"]] = (
+				{"Type": _lb["Type"]},
+				{"Scheme": _lb["Scheme"]},
+				{"DNS Name": _lb["DNSName"]},
+				{"Security Groups": _securitygroups}
+			)
