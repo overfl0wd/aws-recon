@@ -79,10 +79,19 @@ class AwsSession:
 		"""
 
 		for _group in self.resource.security_groups.all():
+			_tags = { "Tags": {}}
+
+			try:  # Grab all tags, add them to the dictionary. Passes if there are none.
+				for _tag in _group.tags:
+					_tags["Tags"][_tag["Key"]] = _tag["Value"]
+			except TypeError:
+				pass
+
 			self.securitygroups[_group.group_id] = (
 				{"Name": _group.group_name},
 				{"Description": _group.description},
-				{"VPC": _group.vpc_id}
+				{"VPC": _group.vpc_id},
+				_tags
 			)
 
 	def enumerate_networkinterfaces(self):
