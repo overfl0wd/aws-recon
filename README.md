@@ -1,6 +1,6 @@
 # AWS recon
 
-this is a utility to extract useful information from an AWS account. 
+this is a utility to extract useful information about resources (servers, networking, etc) in an AWS account. 
 
 each function iterates through specific resources for the given account and region
 
