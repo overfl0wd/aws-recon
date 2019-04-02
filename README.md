@@ -43,4 +43,4 @@ print(prod_east1.servers)
 ```
 
 ## what's next
-currently the output is a poorly structured dictionary. i want to change this to JSON once i've got the functionality down
+add enumeration for more services/resources, flesh out the example usage info
