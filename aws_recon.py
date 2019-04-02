@@ -1,4 +1,5 @@
 import boto3
+import json
 
 class AwsSession:
 	def __init__(self, profile, region):
@@ -72,6 +73,8 @@ class AwsSession:
 				_tags
 			)
 
+		self.servers = json.dumps(self.servers, indent=2)
+
 	def enumerate_securitygroups(self):
 
 		""" Queries all security groups in the session.
@@ -93,6 +96,8 @@ class AwsSession:
 				{"VPC": _group.vpc_id},
 				_tags
 			)
+
+		self.securitygroups = json.dumps(self.securitygroups, indent=2)
 
 	def enumerate_networkinterfaces(self):
 
@@ -116,13 +121,13 @@ class AwsSession:
 			except IndexError:
 				pass
 
-			try: # Grab public DNS name, or set to empty and pass if one isn't found.
+			try:  # Grab public DNS name, or set to empty and pass if one isn't found.
 				_publicdns = _interface.private_ip_addresses[0]["Association"]["PublicDnsName"]
 			except KeyError:
 				_publicdns = ""
 				pass
 
-			try: # Grab public IP address, or set to empty and pass if one isn't found.
+			try:  # Grab public IP address, or set to empty and pass if one isn't found.
 				_publicip = _interface.private_ip_addresses[0]["Association"]["PublicIp"]
 			except KeyError:
 				_publicip = ""
@@ -136,10 +141,13 @@ class AwsSession:
 				_tags
 			)
 
+		self.networkinterfaces = json.dumps(self.networkinterfaces, indent=2)
+
 	def enumerate_classiclbs(self):
 
 		""" Queries all Classic load balancers.
-		Returns DNS name, scheme, attached servers, and listening ports.
+		Returns DNS name, scheme, security groups,
+		attached servers, and listening ports.
 		"""
 
 		_response = self.elbclient.describe_load_balancers()
@@ -147,6 +155,7 @@ class AwsSession:
 		for _lb in _response["LoadBalancerDescriptions"]:
 			_listeners = {"Listeners": {}}
 			_attachments = []
+			_securitygroups = []
 
 			for _listener in _lb["ListenerDescriptions"]:  # Grab the listening ports and protocols, add to dict.
 				_listeners["Listeners"][_listener["Listener"]["LoadBalancerPort"]] = _listener["Listener"]["Protocol"]
@@ -154,12 +163,22 @@ class AwsSession:
 			for _instance in _lb["Instances"]:
 				_attachments.append(_instance["InstanceId"])
 
+			try:  # Get attached security groups, and pass if there aren't any.
+				for _group in _lb["SecurityGroups"]:
+					_securitygroups.append(_group)
+			except KeyError:
+				pass
+
 			self.classiclbs[_lb["LoadBalancerName"]] = (
-				{"DNS Name": _lb["DNSName"]},
+				{"Type": "classic"},
 				{"Scheme": _lb["Scheme"]},
+				{"DNS Name": _lb["DNSName"]},
+				{"Security Groups": _securitygroups},
 				{"Attached Servers": _attachments},
 				_listeners
 			)
+
+		self.classiclbs = json.dumps(self.classiclbs, indent=2)
 
 	def enumerate_applicationlbs(self):
 
@@ -184,3 +203,5 @@ class AwsSession:
 				{"DNS Name": _lb["DNSName"]},
 				{"Security Groups": _securitygroups}
 			)
+
+		self.applicationlbs = json.dumps(self.applicationlbs, indent=2)
