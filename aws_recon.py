@@ -41,61 +41,71 @@ class AwsSession:
 	def enumerate_servers(self):
 
 		""" Queries all EC2 instances in the session.
-		Returns all associated tags, private + public IPs, and current state:
+		Each object is added as a nested dictionary to self.servers.
+		Each nested dict contains associated tags, the current private IP as well as all available
+		secondary IPs, public IP, AMI, instance type, attached IAM role,
+		private key name, and current state of each server:
 		(running / stopped / terminated / etc).
 		"""
 
 		for _server in self.resource.instances.all():
-			_tags = { "Tags": {}}
 			_secondaries = []
 
-			try:  # Grab all tags, add them to the dictionary. Passes if there are none.
+			self.servers[_server.instance_id] = {
+				"Service": "EC2",
+				"Resource": "Instance",
+				"Current Private IP": _server.private_ip_address,
+				"Public IP": _server.public_ip_address,
+				"State": _server.state["Name"],
+				"AMI": _server.image_id,
+				"Instance Type": _server.instance_type,
+				"Key Name": _server.key_name,
+			}
+
+			try:  # Get all tags, add them to the dictionary. Passes if there are none.
 				for _tag in _server.tags:
-					_tags["Tags"][_tag["Key"]] = _tag["Value"]
+					self.servers[_server.instance_id][_tag["Key"]] = _tag["Value"]
 			except TypeError:
 				pass
 
-			try:  # Grab all secondary IP addresses, and pass if there are none.
+			try:  # Get the IAM role attached to the instance.
+				self.servers[_server.instance_id]["IAM Role"] = _server.iam_instance_profile["Arn"]
+			except TypeError:
+				pass
+
+			try:  # Get all secondary IP addresses, and pass if there are none.
 				for _address in _server.network_interfaces_attribute[0]["PrivateIpAddresses"]:
 					_secondaries.append(_address["PrivateIpAddress"])
 			except IndexError:
 				pass
 
-			self.servers[_server.instance_id] = (
-				{"Current Private IP": _server.private_ip_address},
-				{"Public IP": _server.public_ip_address}, 
-				{"State": _server.state["Name"]},
-				{"AMI": _server.image_id},
-				{"Instance Type": _server.instance_type},
-				{"Key Name": _server.key_name},
-				{"Role Profile": _server.iam_instance_profile},
-				{"Available Private IPs": _secondaries},
-				_tags
-			)
+			self.servers[_server.instance_id]["Available Private IPs"] = ', '.join(_secondaries)
 
 		self.servers = json.dumps(self.servers, indent=2)
 
 	def enumerate_securitygroups(self):
 
 		""" Queries all security groups in the session.
-		Returns ID, name, description, and associated VPC.
+		Each object is added as a nested dictionary to self.securitygroups,
+		and contains the name, ID, description, VPC, and tags of each group.
 		"""
 
 		for _group in self.resource.security_groups.all():
-			_tags = { "Tags": {}}
 
-			try:  # Grab all tags, add them to the dictionary. Passes if there are none.
+			self.securitygroups[_group.group_id] = {
+				"Service": "EC2",
+				"Resource": "Security Group",
+				"Name": _group.group_name,
+				"Group ID": _group.group_id,
+				"Description": _group.description,
+				"VPC": _group.vpc_id
+			}
+
+			try:  # Get all tags, add them to the dictionary. Passes if there are none.
 				for _tag in _group.tags:
-					_tags["Tags"][_tag["Key"]] = _tag["Value"]
+					self.securitygroups[_group.group_id][_tag["Key"]] = _tag["Value"]
 			except TypeError:
 				pass
-
-			self.securitygroups[_group.group_id] = (
-				{"Name": _group.group_name},
-				{"Description": _group.description},
-				{"VPC": _group.vpc_id},
-				_tags
-			)
 
 		self.securitygroups = json.dumps(self.securitygroups, indent=2)
 
