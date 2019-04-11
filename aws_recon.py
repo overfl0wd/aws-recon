@@ -15,6 +15,7 @@ class AwsSession:
 		self.networkinterfaces = {}
 		self.classiclbs = {}
 		self.applicationlbs = {}
+		self.elasticips = {}
 
 
 	def _setup_session(self):
@@ -29,7 +30,7 @@ class AwsSession:
 		_elbclient = self.session.client("elb")  # but the SDK reflects the old name.
 		return _elbclient
 
-	def _setup_alb_client(self):  # Application load balancers have a different client than ELBs
+	def _setup_alb_client(self):  # Application & Network load balancers have a different client than ELBs
 		_albclient = self.session.client("elbv2")
 		return _albclient
 
@@ -41,10 +42,10 @@ class AwsSession:
 	def enumerate_servers(self):
 
 		""" Queries all EC2 instances in the session.
-		Each object is added as a nested dictionary to self.servers.
-		Each nested dict contains associated tags, the current private IP as well as all available
+		Each unique object is added as a nested dictionary to self.servers.
+		Each nested dict contains associated tags, the current private IP & all available
 		secondary IPs, public IP, AMI, instance type, attached IAM role,
-		private key name, and current state of each server:
+		resource ID, private key name, and current state of each server:
 		(running / stopped / terminated / etc).
 		"""
 
@@ -52,8 +53,11 @@ class AwsSession:
 			_secondaries = []
 
 			self.servers[_server.instance_id] = {
+				"Profile": self.profile,
+				"Region": self.region,
 				"Service": "EC2",
 				"Resource": "Instance",
+				"Instance ID": _server.instance_id,
 				"Current Private IP": _server.private_ip_address,
 				"Public IP": _server.public_ip_address,
 				"State": _server.state["Name"],
@@ -86,13 +90,15 @@ class AwsSession:
 	def enumerate_securitygroups(self):
 
 		""" Queries all security groups in the session.
-		Each object is added as a nested dictionary to self.securitygroups,
-		and contains the name, ID, description, VPC, and tags of each group.
+		Each unique resource is added as a nested dictionary to self.securitygroups.
+		Each nested dict contains the name, resource ID, description, VPC, and tags of each group.
 		"""
 
 		for _group in self.resource.security_groups.all():
 
 			self.securitygroups[_group.group_id] = {
+				"Profile": self.profile,
+				"Region": self.region,
 				"Service": "EC2",
 				"Resource": "Security Group",
 				"Name": _group.group_name,
@@ -112,63 +118,78 @@ class AwsSession:
 	def enumerate_networkinterfaces(self):
 
 		""" Queries all network interfaces in the session.
-		Returns ID, public addresses, private addresses, and tags.
+		Each unique object is added as a nested dictionary to self.networkinterfaces.
+		Each nested dict contains the current private IP & all available
+		secondary IPs, public IP, DNS Name, resource ID, and tags of each network interface.
 		"""
 
 		for _interface in self.resource.network_interfaces.all():
-			_tags = { "Tags": {}}
 			_secondaries = []
 
-			try:  # Grab all tags, add them to the dictionary. Passes if there are none.
-				for _tag in _interface.tag_set:
-					_tags["Tags"][_tag["Key"]] = _tag["Value"]
+			self.networkinterfaces[_interface.network_interface_id] = {
+				"Profile": self.profile,
+				"Region": self.region,
+				"Service": "EC2",
+				"Resource": "Network Interface",
+				"Interface ID": _interface.network_interface_id,
+				"Current Private IP": _interface.private_ip_address
+			}
+
+			try:  # Get public IP address, or set to empty and pass if one isn't found.
+				self.networkinterfaces[_interface.network_interface_id]["Public IP Address"] = _interface.private_ip_addresses[0]["Association"]["PublicIp"]
 			except KeyError:
 				pass
 
-			try:  # Grab all secondary IP addresses, and pass if there are none.
+			try:  # Get public DNS name, or set to empty and pass if one isn't found.
+				self.networkinterfaces[_interface.network_interface_id]["Public DNS Name"] = _interface.private_ip_addresses[0]["Association"]["PublicDnsName"]
+			except KeyError:
+				pass
+
+			try:  # Get all tags, add them to the dictionary. Passes if there are none.
+				for _tag in _interface.tag_set:
+					self.networkinterfaces[_interface.network_interface_id][_tag["Key"]] = _tag["Value"]
+			except KeyError:
+				pass
+
+			try:  # Get all secondary IP addresses, and pass if there are none.
 				for _address in _interface.private_ip_addresses:
 					_secondaries.append(_address["PrivateIpAddress"])
 			except IndexError:
 				pass
 
-			try:  # Grab public DNS name, or set to empty and pass if one isn't found.
-				_publicdns = _interface.private_ip_addresses[0]["Association"]["PublicDnsName"]
-			except KeyError:
-				_publicdns = ""
-				pass
-
-			try:  # Grab public IP address, or set to empty and pass if one isn't found.
-				_publicip = _interface.private_ip_addresses[0]["Association"]["PublicIp"]
-			except KeyError:
-				_publicip = ""
-				pass
-
-			self.networkinterfaces[_interface.network_interface_id] = (
-				{"Public IP Address": _publicip},
-				{"Public DNS Name": _publicdns},
-				{"Current Private IP": _interface.private_ip_address},
-				{"Available Private IPs": _secondaries},
-				_tags
-			)
+			self.networkinterfaces[_interface.network_interface_id]["Available Private IPs"] = ', '.join(_secondaries)
 
 		self.networkinterfaces = json.dumps(self.networkinterfaces, indent=2)
 
 	def enumerate_classiclbs(self):
 
-		""" Queries all Classic load balancers.
-		Returns DNS name, scheme, security groups,
-		attached servers, and listening ports.
+		""" Queries all Classic load balancers in the session.
+		Each unique object is added as a nested dictionary to self.classiclbs.
+		Each nested dict contains the name, scheme (internal / external),
+		DNS name, attached security groups, associated EC2 instances,
+		and listening ports & protocols of each load balancer.
 		"""
 
 		_response = self.elbclient.describe_load_balancers()
 
 		for _lb in _response["LoadBalancerDescriptions"]:
-			_listeners = {"Listeners": {}}
+			_listeners = {}
 			_attachments = []
 			_securitygroups = []
 
-			for _listener in _lb["ListenerDescriptions"]:  # Grab the listening ports and protocols, add to dict.
-				_listeners["Listeners"][_listener["Listener"]["LoadBalancerPort"]] = _listener["Listener"]["Protocol"]
+			self.classiclbs[_lb["LoadBalancerName"]] = {
+				"Profile": self.profile,
+				"Region": self.region,
+				"Service": "EC2",
+				"Resource": "Load Balancer",
+				"Type": "classic",
+				"Scheme": _lb["Scheme"],
+				"Name": _lb["LoadBalancerName"],
+				"DNS Name": _lb["DNSName"]
+			}
+
+			for _listener in _lb["ListenerDescriptions"]:  # Get the listening ports and protocols, add to dict.
+				_listeners[_listener["Listener"]["LoadBalancerPort"]] = _listener["Listener"]["Protocol"]
 
 			for _instance in _lb["Instances"]:
 				_attachments.append(_instance["InstanceId"])
@@ -179,21 +200,18 @@ class AwsSession:
 			except KeyError:
 				pass
 
-			self.classiclbs[_lb["LoadBalancerName"]] = (
-				{"Type": "classic"},
-				{"Scheme": _lb["Scheme"]},
-				{"DNS Name": _lb["DNSName"]},
-				{"Security Groups": _securitygroups},
-				{"Attached Servers": _attachments},
-				_listeners
-			)
+			self.classiclbs[_lb["LoadBalancerName"]]["Attached Servers"] = ', '.join(_attachments)
+			self.classiclbs[_lb["LoadBalancerName"]]["Security Groups"] = ', '.join(_securitygroups)
+			self.classiclbs[_lb["LoadBalancerName"]]["Listeners"] = _listeners
 
 		self.classiclbs = json.dumps(self.classiclbs, indent=2)
 
 	def enumerate_applicationlbs(self):
 
-		""" Queries all Application & Network load balancers.
-		Returns DNS name, scheme, security groups, and listening ports.
+		""" Queries all Application & Network load balancers in the session.
+		Each unique object is added as a nested dictionary to self.applicationlbs.
+		Each nested dict contains the name, type, scheme (internal / external),
+		DNS name, and attached security groups of each load balancer.
 		"""
 
 		_response = self.albclient.describe_load_balancers()
@@ -201,17 +219,55 @@ class AwsSession:
 		for _lb in _response["LoadBalancers"]:
 			_securitygroups = []
 
+			self.applicationlbs[_lb["LoadBalancerName"]] = {
+				"Profile": self.profile,
+				"Region": self.region,
+				"Service": "EC2",
+				"Resource": "Load Balancer",
+				"Name": _lb["LoadBalancerName"],
+				"Type": _lb["Type"],
+				"Scheme": _lb["Scheme"],
+				"DNS Name": _lb["DNSName"]
+			}
+
 			try:  # Get attached security groups, and pass if there aren't any.
 				for _group in _lb["SecurityGroups"]:
 					_securitygroups.append(_group)
 			except KeyError:
 				pass
 
-			self.applicationlbs[_lb["LoadBalancerName"]] = (
-				{"Type": _lb["Type"]},
-				{"Scheme": _lb["Scheme"]},
-				{"DNS Name": _lb["DNSName"]},
-				{"Security Groups": _securitygroups}
-			)
+			self.applicationlbs[_lb["LoadBalancerName"]]["Security Groups"] = ', '.join(_securitygroups)
 
 		self.applicationlbs = json.dumps(self.applicationlbs, indent=2)
+
+	def enumerate_elasticips(self):
+
+		""" Queries all Elastic IP Addresses in the session.
+		Each unique object is added as a nested dictionary to self.elasticips.
+		Each nested dict contains the allocation ID, attached EC2 instance,
+		network interface, private IP, public IP, and tags of each Elastic IP.
+		"""
+
+		_response = self.resource.vpc_addresses.all()
+
+		for _address in _response:
+
+			self.elasticips[_address.allocation_id] = {
+				"Profile": self.profile,
+				"Region": self.region,
+				"Service": "EC2",
+				"Resource": "Elastic IP",
+				"Allocation ID": _address.allocation_id,
+				"Attached Instance": _address.instance_id,
+				"Network Interface":_address.network_interface_id,
+				"Private IP": _address.private_ip_address,
+				"Public IP": _address.public_ip
+			}
+
+			try:  # Get all tags, add them to the dictionary. Passes if there are none.
+				for _tag in _address.tags:
+					self.elasticips[_address.allocation_id][_tag["Key"]] = _tag["Value"]
+			except TypeError:
+				pass
+
+		self.elasticips = json.dumps(self.elasticips, indent=2)
