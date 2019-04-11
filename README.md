@@ -24,6 +24,7 @@ pip install boto3
 - enumerate_networkinterfaces()
 - enumerate_classiclbs()
 - enumerate_applicationlbs()
+- enumerate_elasticips()
 ```python
 from aws_recon import AwsSession
 
