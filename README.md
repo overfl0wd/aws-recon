@@ -5,9 +5,10 @@ this is a utility to extract useful information about resources (servers, networ
 each function iterates through specific resources for the given account and region
 
 ## what's the point?
-- i think this would be valuable when mapping out the attack surface of a pentest, given a set of AWS API keys w/ read permissions are available. 
 
-- i also use this internally to regularly & programmatically generate a detailed list of assets. the output is piped into Splunk as a lookup to add value to reports and alerts (adding names to resource IDs that show up in Cloudtrail, etc)
+- this is used internally to programmatically generate a detailed list of assets. the output is piped into Splunk as a lookup to add value to reports and alerts (adding names to resource IDs that show up in Cloudtrail, etc)
+
+- i think this could also be useful in mapping out the attack surface of a pentest, given a set of AWS API keys w/ read permissions are available. 
 
 ## requirements
 
